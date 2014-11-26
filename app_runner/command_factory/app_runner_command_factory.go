@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/codegangsta/cli"
 )
@@ -12,15 +13,16 @@ type appRunner interface {
 	StartDockerApp(name, startCommand, dockerImagePath string) error
 	ScaleDockerApp(name string, instances int) error
 	StopDockerApp(name string) error
+	IsDockerAppUp(name string) (bool, error)
 }
 
 type AppRunnerCommandFactory struct {
-	appRunner appRunner
-	output    io.Writer
+	appRunnerCommand *appRunnerCommand
 }
 
-func NewAppRunnerCommandFactory(appRunner appRunner, output io.Writer) *AppRunnerCommandFactory {
-	return &AppRunnerCommandFactory{appRunner, output}
+
+func NewAppRunnerCommandFactory(appRunner appRunner, output io.Writer, timeout int) *AppRunnerCommandFactory {
+	return &AppRunnerCommandFactory{&appRunnerCommand{appRunner, output, timeout}}
 }
 
 func (commandFactory *AppRunnerCommandFactory) MakeStartDiegoAppCommand() cli.Command {
@@ -41,7 +43,7 @@ func (commandFactory *AppRunnerCommandFactory) MakeStartDiegoAppCommand() cli.Co
 		ShortName:   "s",
 		Description: "Start a docker app on diego",
 		Usage:       "diego-edge-cli start APP_NAME -i DOCKER_IMAGE -c START_COMMAND",
-		Action:      commandFactory.startDiegoApp,
+		Action:      commandFactory.appRunnerCommand.startDiegoApp,
 		Flags:       startFlags,
 	}
 
@@ -61,7 +63,7 @@ func (commandFactory *AppRunnerCommandFactory) MakeScaleDiegoAppCommand() cli.Co
 		Name:        "scale",
 		Description: "Scale a docker app on diego",
 		Usage:       "diego-edge-cli scale APP_NAME --instances NUM_INSTANCES ",
-		Action:      commandFactory.scaleDiegoApp,
+		Action:      commandFactory.appRunnerCommand.scaleDiegoApp,
 		Flags:       scaleFlags,
 	}
 
@@ -70,82 +72,108 @@ func (commandFactory *AppRunnerCommandFactory) MakeScaleDiegoAppCommand() cli.Co
 
 func (commandFactory *AppRunnerCommandFactory) MakeStopDiegoAppCommand() cli.Command {
 
-	var scaleCommand = cli.Command{
+	var stopCommand = cli.Command{
 		Name:        "stop",
 		Description: "Stop a docker app on diego",
 		Usage:       "diego-edge-cli stop APP_NAME",
-		Action:      commandFactory.stopDiegoApp,
+		Action:      commandFactory.appRunnerCommand.stopDiegoApp,
 	}
 
-	return scaleCommand
+	return stopCommand
 }
 
-func (commandFactory *AppRunnerCommandFactory) startDiegoApp(c *cli.Context) {
+type appRunnerCommand struct {
+	appRunner appRunner
+	output    io.Writer
+	timeout   int
+}
+
+func (cmd *appRunnerCommand) startDiegoApp(c *cli.Context) {
 	startCommand := c.String("start-command")
 	dockerImage := c.String("docker-image")
 	name := c.Args().First()
 
 	if name == "" || dockerImage == "" || startCommand == "" {
-		commandFactory.incorrectUsage()
+		cmd.incorrectUsage()
 		return
 	} else if !strings.HasPrefix(dockerImage, "docker:///") {
-		commandFactory.incorrectUsage()
-		commandFactory.say("Docker Image should begin with: docker:///")
+		cmd.incorrectUsage()
+		cmd.say("Docker Image should begin with: docker:///")
 		return
 	}
 
-	err := commandFactory.appRunner.StartDockerApp(name, startCommand, dockerImage)
+	err := cmd.appRunner.StartDockerApp(name, startCommand, dockerImage)
 
 	if err != nil {
-		commandFactory.say(fmt.Sprintf("Error Starting App: %s", err))
+		cmd.say(fmt.Sprintf("Error Starting App: %s", err))
 		return
 	}
 
-	commandFactory.say("App Staged Successfully")
+	cmd.say("Starting App: " + name)
+	for i := 0; i < cmd.timeout; i++ {
+		if status, _ := cmd.appRunner.IsDockerAppUp(name); status {
+			cmd.newLine()
+			cmd.say(name + " is now running. \n")
+			return
+		} else {
+			cmd.dot()
+		}
+		time.Sleep(time.Second)
+	}
+	cmd.newLine()
+	cmd.say(name + " took too long to start. \n")
 }
 
-func (commandFactory *AppRunnerCommandFactory) scaleDiegoApp(c *cli.Context) {
+func (cmd *appRunnerCommand) scaleDiegoApp(c *cli.Context) {
 	instances := c.Int("instances")
 	appName := c.Args().First()
 	if appName == "" {
-		commandFactory.incorrectUsage()
+		cmd.incorrectUsage()
 		return
 	} else if instances == 0 {
-		commandFactory.say(fmt.Sprintf("Error Scaling to 0 instances - Please stop with: diego-edge-cli stop cool-web-app"))
+		cmd.say(fmt.Sprintf("Error Scaling to 0 instances - Please stop with: diego-edge-cli stop cool-web-app"))
 		return
 	}
 
-	err := commandFactory.appRunner.ScaleDockerApp(appName, instances)
+	err := cmd.appRunner.ScaleDockerApp(appName, instances)
 
 	if err != nil {
-		commandFactory.say(fmt.Sprintf("Error Scaling App: %s", err))
+		cmd.say(fmt.Sprintf("Error Scaling App: %s", err))
 		return
 	}
 
-	commandFactory.say("App Scaled Successfully")
+	cmd.say("App Scaled Successfully")
 }
 
-func (commandFactory *AppRunnerCommandFactory) stopDiegoApp(c *cli.Context) {
+func (cmd *appRunnerCommand) stopDiegoApp(c *cli.Context) {
 	appName := c.Args().First()
 	if appName == "" {
-		commandFactory.incorrectUsage()
+		cmd.incorrectUsage()
 		return
 	}
 
-	err := commandFactory.appRunner.StopDockerApp(appName)
+	err := cmd.appRunner.StopDockerApp(appName)
 
 	if err != nil {
-		commandFactory.say(fmt.Sprintf("Error Stopping App: %s", err))
+		cmd.say(fmt.Sprintf("Error Stopping App: %s", err))
 		return
 	}
 
-	commandFactory.say("App Stopped Successfully")
+	cmd.say("App Stopped Successfully")
 }
 
-func (commandFactory *AppRunnerCommandFactory) incorrectUsage() {
-	commandFactory.say("Incorrect Usage\n")
+func (cmd *appRunnerCommand) say(output string) {
+	cmd.output.Write([]byte(output))
 }
 
-func (commandFactory *AppRunnerCommandFactory) say(output string) {
-	commandFactory.output.Write([]byte(output))
+func (cmd *appRunnerCommand) incorrectUsage() {
+	cmd.say("Incorrect Usage\n")
+}
+
+func (cmd *appRunnerCommand) dot() {
+	cmd.output.Write([]byte("."))
+}
+
+func (cmd *appRunnerCommand) newLine() {
+	cmd.output.Write([]byte("\n"))
 }
