@@ -26,8 +26,8 @@ type AppInfo struct {
 	DiskMB                 int
 	MemoryMB               int
 	CPUWeight              uint
-	Ports                  []uint32
-	Routes                 []string
+	Ports                  []uint16
+	Routes                 receptor.RoutingInfo //[]string //TODO: probably should still be string
 	LogGuid                string
 	LogSource              string
 	Annotation             string
@@ -35,8 +35,8 @@ type AppInfo struct {
 }
 
 type PortMapping struct {
-	HostPort      uint32
-	ContainerPort uint32
+	HostPort      uint16
+	ContainerPort uint16
 }
 
 type InstanceInfo struct {

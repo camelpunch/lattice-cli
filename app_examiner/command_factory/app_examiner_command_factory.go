@@ -14,6 +14,7 @@ import (
 	"github.com/pivotal-cf-experimental/lattice-cli/colors"
 	"github.com/pivotal-cf-experimental/lattice-cli/output"
 	"github.com/pivotal-cf-experimental/lattice-cli/output/cursor"
+	"github.com/pivotal-cf-experimental/lattice-cli/route_helpers"
 	"github.com/pivotal-golang/clock"
 )
 
@@ -23,6 +24,7 @@ type AppExaminerCommandFactory struct {
 	appExaminerCommand *appExaminerCommand
 }
 
+//TODO: Am I a remnant of interfaces past?
 type exitHandler interface {
 	OnExit(func())
 }
@@ -99,9 +101,11 @@ func (cmd *appExaminerCommand) listApps(context *cli.Context) {
 	fmt.Fprintln(w, header)
 
 	for _, appInfo := range appList {
-		routes := strings.Join(appInfo.Routes, " ")
+		//		routes := strings.Join(appInfo.Routes, " ")
 
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", colors.Bold(appInfo.ProcessGuid), colorInstances(appInfo), colors.NoColor(strconv.Itoa(appInfo.DiskMB)), colors.NoColor(strconv.Itoa(appInfo.MemoryMB)), colors.Cyan(routes))
+		//		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", colors.Bold(appInfo.ProcessGuid), colorInstances(appInfo), colors.NoColor(strconv.Itoa(appInfo.DiskMB)), colors.NoColor(strconv.Itoa(appInfo.MemoryMB)), colors.Cyan(routes))
+		appRoutes, _ := route_helpers.AppRoutesFromRoutingInfo(appInfo.Routes)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%#v\n", colors.Bold(appInfo.ProcessGuid), colorInstances(appInfo), colors.NoColor(strconv.Itoa(appInfo.DiskMB)), colors.NoColor(strconv.Itoa(appInfo.MemoryMB)), appRoutes)
 	}
 	w.Flush()
 }
@@ -163,7 +167,8 @@ func printAppInfo(w io.Writer, appInfo app_examiner.AppInfo) {
 	}
 
 	fmt.Fprintf(w, "%s\t%s\n", "Ports", strings.Join(portStrings, ","))
-	fmt.Fprintf(w, "%s\t%s\n", "Routes", strings.Join(appInfo.Routes, " "))
+	//	fmt.Fprintf(w, "%s\t%s\n", "Routes", strings.Join(appInfo.Routes, " "))
+	fmt.Fprintf(w, "%s\t%#v\n", "Routes", appInfo.Routes)
 	if appInfo.Annotation != "" {
 		fmt.Fprintf(w, "%s\t%s\n", "Annotation", appInfo.Annotation)
 	}
