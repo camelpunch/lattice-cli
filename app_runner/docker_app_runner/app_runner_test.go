@@ -10,6 +10,7 @@ import (
 	"github.com/cloudfoundry-incubator/receptor"
 	"github.com/cloudfoundry-incubator/receptor/fake_receptor"
 	"github.com/cloudfoundry-incubator/runtime-schema/models"
+	"github.com/pivotal-cf-experimental/lattice-cli/route_helpers"
 	"github.com/pivotal-cf-experimental/lattice-cli/test_helpers"
 
 	docker_app_runner "github.com/pivotal-cf-experimental/lattice-cli/app_runner/docker_app_runner"
@@ -56,18 +57,33 @@ var _ = Describe("AppRunner", func() {
 
 			Expect(fakeReceptorClient.CreateDesiredLRPCallCount()).To(Equal(1))
 			Expect(fakeReceptorClient.CreateDesiredLRPArgsForCall(0)).To(Equal(receptor.DesiredLRPCreateRequest{
-				ProcessGuid:          "americano-app",
-				Domain:               "lattice",
-				RootFSPath:           "docker:///runtest/runner",
-				Instances:            22,
-				Stack:                "lucid64",
-				EnvironmentVariables: []receptor.EnvironmentVariable{receptor.EnvironmentVariable{Name: "APPROOT", Value: "/root/env/path"}, receptor.EnvironmentVariable{Name: "PORT", Value: "2000"}},
-				Routes:               []string{"americano-app.myDiegoInstall.com"},
-				MemoryMB:             128,
-				DiskMB:               1024,
-				Ports:                []uint16{2000, 4000},
-				LogGuid:              "americano-app",
-				LogSource:            "APP",
+				ProcessGuid: "americano-app",
+				Domain:      "lattice",
+				RootFSPath:  "docker:///runtest/runner",
+				Instances:   22,
+				Stack:       "lucid64",
+				EnvironmentVariables: []receptor.EnvironmentVariable{
+					receptor.EnvironmentVariable{
+						Name:  "APPROOT",
+						Value: "/root/env/path",
+					},
+					receptor.EnvironmentVariable{
+						Name:  "PORT",
+						Value: "2000",
+					},
+				},
+				Routes: route_helpers.AppRoutes{
+					route_helpers.AppRoute{
+						Hostnames: []string{"americano-app.myDiegoInstall.com"},
+						Port:      8080,
+					},
+				}.RoutingInfo(),
+
+				MemoryMB:  128,
+				DiskMB:    1024,
+				Ports:     []uint16{2000, 4000},
+				LogGuid:   "americano-app",
+				LogSource: "APP",
 				Setup: &models.DownloadAction{
 					From: "http://file_server.service.dc1.consul:8080/v1/static/healthcheck.tgz",
 					To:   "/tmp",
